@@ -31,7 +31,7 @@ app.get('/health', (req, res) => {
     res.json({
         status: 200,
         success: true,
-        service: 'PRINCE-MDX Session',
+        service: 'HAYMOSH-MDX Session',
         timestamp: new Date().toISOString()
     });
 });
