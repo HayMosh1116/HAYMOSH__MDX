@@ -34,6 +34,9 @@ router.get('/', async (req, res) => {
         }
     }
 
+    let reconnectCount = 0;
+    let intentionalClose = false;
+
     async function PRINCE_QR_CODE() {
         const { version } = await fetchLatestBaileysVersion();
         console.log(version);
@@ -258,6 +261,7 @@ router.get('/', async (req, res) => {
         });
 
                         await delay(2000);
+                        intentionalClose = true;
                         await Prince.ws.close();
                     } catch (sendError) {
                         console.error("Error sending session:", sendError);
@@ -265,9 +269,20 @@ router.get('/', async (req, res) => {
                         await cleanUpSession();
                     }
                     
-                } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode != 401) {
-                    await delay(10000);
-                    PRINCE_QR_CODE();
+                } else if (connection === "close" && !intentionalClose && lastDisconnect?.error?.output?.statusCode !== 401) {
+                    if (reconnectCount < 3) {
+                        reconnectCount++;
+                        console.log('QR reconnecting... attempt ' + reconnectCount + '/3');
+                        await delay(10000);
+                        PRINCE_QR_CODE();
+                    } else {
+                        console.log('QR max reconnect attempts reached.');
+                        if (!responseSent && !res.headersSent) {
+                            res.status(500).json({ code: 'QR Service is Currently Unavailable' });
+                            responseSent = true;
+                        }
+                        await cleanUpSession();
+                    }
                 }
             });
         } catch (err) {
