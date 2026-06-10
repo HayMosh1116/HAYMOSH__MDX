@@ -42,6 +42,7 @@ router.get('/', async (req, res) => {
     }
 
     let reconnectCount = 0;
+    let intentionalClose = false;
 
     async function PRINCE_PAIR_CODE() {
     const { version } = await fetchLatestBaileysVersion();
@@ -173,6 +174,7 @@ router.get('/', async (req, res) => {
                         }
 
                         await delay(3000);
+                        intentionalClose = true;
                         await Prince.ws.close();
                     } catch (sessionError) {
                         console.error("Session processing error:", sessionError);
@@ -180,7 +182,7 @@ router.get('/', async (req, res) => {
                         await cleanUpSession();
                     }
                     
-                } else if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
+                } else if (connection === "close" && !intentionalClose && lastDisconnect?.error?.output?.statusCode !== 401) {
                     if (reconnectCount < 3) {
                         reconnectCount++;
                         console.log('Reconnecting... attempt ' + reconnectCount + '/3');
