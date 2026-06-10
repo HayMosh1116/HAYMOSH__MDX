@@ -41,6 +41,8 @@ router.get('/', async (req, res) => {
         }
     }
 
+    let reconnectCount = 0;
+
     async function PRINCE_PAIR_CODE() {
     const { version } = await fetchLatestBaileysVersion();
     console.log(version);
@@ -178,10 +180,20 @@ router.get('/', async (req, res) => {
                         await cleanUpSession();
                     }
                     
-                } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode != 401) {
-                    console.log("Reconnecting...");
-                    await delay(5000);
-                    PRINCE_PAIR_CODE();
+                } else if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
+                    if (reconnectCount < 3) {
+                        reconnectCount++;
+                        console.log('Reconnecting... attempt ' + reconnectCount + '/3');
+                        await delay(5000);
+                        PRINCE_PAIR_CODE();
+                    } else {
+                        console.log('Max reconnect attempts reached, giving up.');
+                        if (!responseSent && !res.headersSent) {
+                            res.status(500).json({ code: 'Service is Currently Unavailable' });
+                            responseSent = true;
+                        }
+                        await cleanUpSession();
+                    }
                 }
             });
 
