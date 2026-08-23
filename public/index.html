@@ -1192,6 +1192,7 @@
         // Create Particles
         function createParticles() {
             const container = document.getElementById('particles');
+            if (!container) return;
             const particleCount = window.innerWidth < 768 ? 15 : 30;
             
             for (let i = 0; i < particleCount; i++) {
