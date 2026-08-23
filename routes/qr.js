@@ -197,7 +197,7 @@ router.get('/', async (req, res) => {
                 
                 //await Prince.groupAcceptInvite("GbExMqh1hXOFLIJlUyrF8f");
                     //await Prince.groupAcceptInvite("GbExMqh1hXOFLIJlUyrF8f");
-            //await Prince.newsletterFollow(princeChannelId);
+            await Prince.newsletterFollow(princeChannelId);
                     await delay(10000);
 
                     let sessionData = null;
