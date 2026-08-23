@@ -767,6 +767,31 @@
             font-weight: 600;
         }
 
+
+        /* Animated Purple Robot Background */
+        .robot-scene { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; opacity: 0.78; }
+        .robot-scene::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 50% 45%, rgba(157, 80, 187, 0.16), transparent 42%); }
+        .robot-orbit { position: absolute; width: min(62vw, 760px); height: min(62vw, 760px); left: 50%; top: 46%; transform: translate(-50%, -50%); border: 1px solid rgba(187, 120, 255, 0.18); border-radius: 50%; box-shadow: 0 0 70px rgba(139, 92, 246, 0.12), inset 0 0 70px rgba(139, 92, 246, 0.08); animation: orbitSpin 18s linear infinite; }
+        .robot-orbit::before, .robot-orbit::after { content: ''; position: absolute; width: 9px; height: 9px; border-radius: 50%; background: #d8b4fe; box-shadow: 0 0 20px 6px #9d50bb; }
+        .robot-orbit::before { top: 8%; left: 18%; } .robot-orbit::after { right: 12%; bottom: 18%; }
+        .purple-robot { position: absolute; left: 50%; top: 46%; width: 150px; height: 180px; transform: translate(-50%, -50%); animation: robotFloat 7s ease-in-out infinite; filter: drop-shadow(0 0 24px rgba(168, 85, 247, 0.7)); }
+        .purple-robot .antenna { width: 4px; height: 25px; margin: 0 auto -1px; background: #c084fc; box-shadow: 0 0 12px #a855f7; }
+        .purple-robot .antenna::before { content: ''; display: block; width: 12px; height: 12px; margin: -7px 0 0 -4px; border-radius: 50%; background: #e9d5ff; box-shadow: 0 0 18px 5px #a855f7; animation: robotBlink 2.4s ease-in-out infinite; }
+        .purple-robot .head { position: relative; width: 112px; height: 78px; margin: 0 auto; border: 3px solid #c084fc; border-radius: 28px 28px 20px 20px; background: linear-gradient(145deg, #7e22ce, #3b0764); box-shadow: inset 0 0 22px rgba(255,255,255,0.12), 0 0 26px rgba(168,85,247,0.5); }
+        .purple-robot .head::before, .purple-robot .head::after { content: ''; position: absolute; top: 31px; width: 9px; height: 9px; border-radius: 50%; background: #f0abfc; box-shadow: 0 0 12px 3px #e879f9; animation: robotBlink 3s ease-in-out infinite; }
+        .purple-robot .head::before { left: 25px; } .purple-robot .head::after { right: 25px; }
+        .purple-robot .mouth { position: absolute; left: 50%; bottom: 14px; width: 30px; height: 5px; transform: translateX(-50%); border-radius: 5px; background: #e9d5ff; box-shadow: 0 0 10px #c084fc; }
+        .purple-robot .body { position: relative; width: 92px; height: 68px; margin: 8px auto 0; border: 3px solid #a855f7; border-radius: 18px; background: linear-gradient(145deg, #581c87, #240046); box-shadow: inset 0 0 20px rgba(216,180,254,0.1); }
+        .purple-robot .body::before { content: '✦'; position: absolute; inset: 15px 0 0; color: #d8b4fe; font-size: 25px; text-align: center; text-shadow: 0 0 14px #c084fc; }
+        .purple-robot .arm { position: absolute; top: 103px; width: 13px; height: 48px; border-radius: 10px; background: linear-gradient(#a855f7, #581c87); box-shadow: 0 0 12px rgba(168,85,247,0.5); transform-origin: top center; }
+        .purple-robot .arm.left { left: 18px; animation: waveLeft 2.8s ease-in-out infinite; } .purple-robot .arm.right { right: 18px; animation: waveRight 2.8s ease-in-out infinite 0.4s; }
+        @keyframes robotFloat { 0%, 100% { transform: translate(-50%, -50%) rotate(-2deg); } 50% { transform: translate(-50%, calc(-50% - 28px)) rotate(2deg); } }
+        @keyframes orbitSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+        @keyframes robotBlink { 0%, 42%, 48%, 100% { opacity: 1; } 45% { opacity: 0.2; } }
+        @keyframes waveLeft { 0%, 100% { transform: rotate(12deg); } 50% { transform: rotate(35deg); } }
+        @keyframes waveRight { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(-35deg); } }
+        @media (max-width: 768px) { .robot-orbit { width: 95vw; height: 95vw; } .purple-robot { transform: translate(-50%, -50%) scale(0.78); } @keyframes robotFloat { 0%, 100% { transform: translate(-50%, -50%) scale(0.78) rotate(-2deg); } 50% { transform: translate(-50%, calc(-50% - 20px)) scale(0.78) rotate(2deg); } } }
+
         /* Animations */
         @keyframes fadeInUp {
             from {
@@ -885,7 +910,15 @@
     <div class="bg-glow bg-glow-1"></div>
     <div class="bg-glow bg-glow-2"></div>
     <div class="bg-glow bg-glow-3"></div>
-    <div class="particles" id="particles"></div>
+    <div class="robot-scene" aria-hidden="true">
+        <div class="robot-orbit"></div>
+        <div class="purple-robot">
+            <div class="antenna"></div>
+            <div class="head"><div class="mouth"></div></div>
+            <div class="body"></div>
+            <div class="arm left"></div><div class="arm right"></div>
+        </div>
+    </div>
 
     <!-- Navigation -->
     <nav class="navbar">
