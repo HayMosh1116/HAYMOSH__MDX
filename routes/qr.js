@@ -4,9 +4,10 @@ const {
 } = require('../mayel');
 const QRCode = require('qrcode');
 const express = require('express');
-const zlib = require('zlib');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises;
+const { serializeSessionDirectory } = require('../mayel/sessionPayload');
+const { acquireAuthSession } = require('../mayel/sessionLimiter');
 let router = express.Router();
 const pino = require("pino");
 const { sendButtons } = require('gifted-btns');
@@ -17,32 +18,50 @@ const {
     delay,
     fetchLatestBaileysVersion
 } = require("@whiskeysockets/baileys");
-const princeChannelId = '120363409598717547@newsletter';
-
 const sessionDir = path.join(__dirname, "session");
 
 
 router.get('/', async (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    const releaseSlot = acquireAuthSession(req.ip);
+    if (!releaseSlot) return res.status(429).send('Too many pairing attempts. Wait a few minutes and try again.');
     const id = princeId();
+    const authPath = path.join(sessionDir, id);
     let responseSent = false;
     let sessionCleanedUp = false;
+    let sessionTimeout;
+    let activeSocket;
 
     async function cleanUpSession() {
         if (!sessionCleanedUp) {
-            await removeFile(path.join(sessionDir, id));
-            sessionCleanedUp = true;
+            clearTimeout(sessionTimeout);
+            if (activeSocket && !intentionalClose) {
+                intentionalClose = true;
+                try { await activeSocket.ws.close(); } catch (_) {}
+            }
+            try {
+                await removeFile(authPath);
+            } catch (cleanupError) {
+                console.error('QR session cleanup error:', cleanupError?.message || cleanupError);
+            } finally {
+                sessionCleanedUp = true;
+                releaseSlot();
+            }
         }
     }
 
     let reconnectCount = 0;
     let intentionalClose = false;
+    let reconnecting = false;
 
     async function PRINCE_QR_CODE() {
         const { version } = await fetchLatestBaileysVersion();
-        console.log(version);
-        const { state, saveCreds } = await useMultiFileAuthState(path.join(sessionDir, id));
+        await fs.mkdir(authPath, { recursive: true, mode: 0o700 });
+        await fs.chmod(authPath, 0o700);
+        const { state, saveCreds } = await useMultiFileAuthState(authPath);
         try {
-            let Prince = princeConnect({
+            const Prince = princeConnect({
                 version,
                 auth: state,
                 printQRInTerminal: false,
@@ -51,12 +70,14 @@ router.get('/', async (req, res) => {
                 connectTimeoutMs: 60000,
                 keepAliveIntervalMs: 30000
             });
+            activeSocket = Prince;
 
             Prince.ev.on('creds.update', saveCreds);
             Prince.ev.on("connection.update", async (s) => {
                 const { connection, lastDisconnect, qr } = s;
                 
                 if (qr && !responseSent) {
+                    try {
                     const qrImage = await QRCode.toDataURL(qr);
                     if (!res.headersSent) {
                         res.send(`
@@ -191,56 +212,29 @@ router.get('/', async (req, res) => {
                         `);
                         responseSent = true;
                     }
+                    } catch (qrError) {
+                        console.error('QR rendering failed:', qrError?.message || qrError);
+                        if (!res.headersSent) res.status(500).json({ error: 'Unable to render pairing QR code.' });
+                        responseSent = true;
+                        await cleanUpSession();
+                    }
                 }
 
                 if (connection === "open") {
-                
-                //await Prince.groupAcceptInvite("GbExMqh1hXOFLIJlUyrF8f");
-                    //await Prince.groupAcceptInvite("GbExMqh1hXOFLIJlUyrF8f");
-            await Prince.newsletterFollow(princeChannelId);
                     await delay(10000);
 
-                    let sessionData = null;
-                    let attempts = 0;
-                    const maxAttempts = 10;
-                    
-                    while (attempts < maxAttempts && !sessionData) {
-                        try {
-                            const credsPath = path.join(sessionDir, id, "creds.json");
-                            if (fs.existsSync(credsPath)) {
-                                const data = fs.readFileSync(credsPath);
-                                if (data && data.length > 100) {
-                                    sessionData = data;
-                                    break;
-                                }
-                            }
-                            await delay(2000);
-                            attempts++;
-                        } catch (readError) {
-                            console.error("Read error:", readError);
-                            await delay(2000);
-                            attempts++;
-                        }
-                    }
-
-                    if (!sessionData) {
-                        await cleanUpSession();
-                        return;
-                    }
-
                     try {
-                        let compressedData = zlib.gzipSync(sessionData);
-                        let b64data = compressedData.toString('base64');
-                        const Sess = await sendButtons(Prince, Prince.user.id, {
+                        const sessionToken = await serializeSessionDirectory(authPath);
+                        await sendButtons(Prince, Prince.user.id, {
             title: '',
-            text: 'HAYWHY_MDX!' + b64data,
+            text: sessionToken,
             footer: `> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ  ‎⁨👾𝒟𝐸𝒱-𝐻𝒜𝒴𝒲𝐻𝒴//𝒯𝐸𝒞𝐻🤖⁩*`,
             buttons: [
                 { 
                     name: 'cta_copy', 
                     buttonParamsJson: JSON.stringify({ 
                         display_text: 'Copy Session', 
-                        copy_code: 'HAYWHY_MDX!' + b64data 
+                    copy_code: sessionToken
                     }) 
                 },
                 {
@@ -269,12 +263,33 @@ router.get('/', async (req, res) => {
                         await cleanUpSession();
                     }
                     
-                } else if (connection === "close" && !intentionalClose && lastDisconnect?.error?.output?.statusCode !== 401) {
+                } else if (connection === "close" && !intentionalClose) {
+                    const closeCode = lastDisconnect?.error?.output?.statusCode;
+                    if (closeCode === 401) {
+                        if (!responseSent && !res.headersSent) {
+                            res.status(502).json({ error: 'WhatsApp rejected this pairing attempt. Please try again.' });
+                            responseSent = true;
+                        }
+                        await cleanUpSession();
+                        return;
+                    }
+                    if (reconnecting) return;
                     if (reconnectCount < 3) {
+                        reconnecting = true;
                         reconnectCount++;
                         console.log('QR reconnecting... attempt ' + reconnectCount + '/3');
                         await delay(10000);
-                        PRINCE_QR_CODE();
+                        reconnecting = false;
+                        try {
+                            await PRINCE_QR_CODE();
+                        } catch (reconnectError) {
+                            console.error('QR reconnect failed:', reconnectError?.message || reconnectError);
+                            if (!responseSent && !res.headersSent) {
+                                res.status(502).send('QR pairing service is temporarily unavailable.');
+                                responseSent = true;
+                            }
+                            await cleanUpSession();
+                        }
                     } else {
                         console.log('QR max reconnect attempts reached.');
                         if (!responseSent && !res.headersSent) {
@@ -296,6 +311,16 @@ router.get('/', async (req, res) => {
     }
 
     try {
+        sessionTimeout = setTimeout(async () => {
+            intentionalClose = true;
+            if (!responseSent && !res.headersSent) {
+                res.status(408).send('QR pairing session expired. Start a new request.');
+                responseSent = true;
+            }
+            try { await activeSocket?.ws?.close(); } catch (_) {}
+            await cleanUpSession();
+        }, 180000);
+        sessionTimeout.unref?.();
         await PRINCE_QR_CODE();
     } catch (finalError) {
         console.error("Final error:", finalError);

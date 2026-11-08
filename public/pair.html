@@ -658,7 +658,7 @@
         <div id="loading-spinner" class="spinner"></div>
         
         <div id="result">
-            <p>Your pairing code is:</p>
+            <p id="result-label">Your pairing code is:</p>
             <div id="pair-code"></div>
             <p>Enter this code in your WhatsApp linked devices</p>
             
@@ -692,7 +692,6 @@
         </div>
     </footer>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
     <script>
         // Create particles
         function createParticles() {
@@ -730,6 +729,7 @@
         const phoneNumberInput = document.getElementById('phone-number');
         const resultDiv = document.getElementById('result');
         const pairCodeDiv = document.getElementById('pair-code');
+        const resultLabel = document.getElementById('result-label');
         const copyButton = document.getElementById('copy-btn');
         const errorMessage = document.getElementById('error-message');
         const successMessage = document.getElementById('success-message');
@@ -762,20 +762,29 @@
             btnText.style.display = 'none';
             btnSpinner.style.display = 'inline-block';
             submitButton.disabled = true;
-            
+            copyButton.disabled = true;
+            successMessage.style.display = 'none';
+
             try {
-                const { data } = await axios.get(`/code?number=${phoneNumber}`);
-                const code = data.code || "ERROR";
-                
+                const response = await fetch(`/code?number=${encodeURIComponent(phoneNumber)}`, {
+                    cache: 'no-store',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await response.json().catch(() => ({}));
+                const code = typeof data.code === 'string' ? data.code.trim() : '';
+                if (!response.ok || !/^[A-Z0-9-]{6,12}$/i.test(code)) {
+                    throw new Error(data.error || 'The server did not return a valid pairing code. Please try again.');
+                }
+                resultLabel.textContent = 'Your pairing code is:';
                 pairCodeDiv.textContent = code;
+                copyButton.disabled = false;
                 resultDiv.style.display = 'block';
-                
                 resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                
             } catch (error) {
-                pairCodeDiv.textContent = "SERVICE ERROR";
+                resultLabel.textContent = 'Could not generate a pairing code';
+                pairCodeDiv.textContent = error.message || 'Service error. Please try again.';
                 resultDiv.style.display = 'block';
-                console.error("Error:", error);
+                console.error('Pairing request failed:', error);
             } finally {
                 btnText.style.display = 'inline-block';
                 btnSpinner.style.display = 'none';
@@ -784,14 +793,19 @@
         });
 
         // Copy handler
-        copyButton.addEventListener('click', () => {
+        copyButton.addEventListener('click', async () => {
             const code = pairCodeDiv.textContent;
-            navigator.clipboard.writeText(code).then(() => {
+            if (copyButton.disabled || !code) return;
+            try {
+                await navigator.clipboard.writeText(code);
                 successMessage.style.display = 'block';
                 setTimeout(() => {
                     successMessage.style.display = 'none';
                 }, 2000);
-            });
+            } catch (_) {
+                successMessage.textContent = 'Clipboard unavailable. Select and copy the code manually.';
+                successMessage.style.display = 'block';
+            }
         });
 
         // Input sanitization

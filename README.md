@@ -40,77 +40,20 @@ Set these in your hosting dashboard or `.env` file:
 
 ---
 
-## Usage in Your Bot
+## Session format and bot integration
 
-### Loading the Session
+New sessions use the versioned `HAYWHY_MDX2!` format. The compressed payload contains the complete Baileys multi-file authentication state: `creds.json` **and** Signal/app-state key files. The matching HAYMOSH bot loader restores these files into its private `mayel/session` directory and preserves the evolving keys on reconnect. Do not use the old example that writes only `creds.json`; that omits required Signal keys.
 
-```js
-// lib/session.js
-const fs = require('fs');
-const zlib = require('zlib');
-const path = require('path');
+For the HAYMOSH bot, copy the complete generated token into the `SESSION_ID` environment variable. Keep it private like a password: anyone holding it may be able to use the linked WhatsApp session. Do not paste it into source code, issue trackers, logs, or public chats. The bot's session directory is local state and must not be committed.
 
-const sessionDir = path.join(__dirname, '..', 'session');
-const credsPath = path.join(sessionDir, 'creds.json');
+Older `HAYWHY_MDX!` and `PRINCE-MDX!` single-credentials tokens remain accepted by the bot for migration, but they do not contain Signal keys and may not restore a usable session. Generate a new session for reliable use.
 
-if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
+Each pairing attempt is limited to three minutes; the service permits at most three live sessions at once and throttles repeated requests. QR images and pairing-code responses are marked `no-store` to discourage caching.
 
-async function loadSession(SESSION_ID) {
-    if (!SESSION_ID || typeof SESSION_ID !== 'string') {
-        throw new Error('SESSION_ID is missing or invalid');
-    }
-
-    if (fs.existsSync(credsPath)) fs.unlinkSync(credsPath);
-
-    const PREFIX = 'PRINCE-MDX!';
-
-    if (!SESSION_ID.startsWith(PREFIX)) {
-        throw new Error(`Invalid session format. Expected to start with "${PREFIX}"`);
-    }
-
-    const payload = SESSION_ID.slice(PREFIX.length);
-
-    // LONG SESSION — decode zlib/base64 inline
-    const compressedData = Buffer.from(payload, 'base64');
-    const decompressedData = zlib.gunzipSync(compressedData);
-    fs.writeFileSync(credsPath, decompressedData, 'utf8');
-    console.log('Session loaded successfully');
-}
-
-module.exports = { loadSession };
-```
-
-### In Your Bot Start File
-
-```js
-// index.js
-const { loadSession } = require('./lib/session');
-const { useMultiFileAuthState, fetchLatestBaileysVersion, default: makeWASocket } = require('@whiskeysockets/baileys');
-
-async function connectToWhatsApp() {
-    await loadSession(process.env.SESSION_ID);
-
-    const { state, saveCreds } = await useMultiFileAuthState('./session');
-    const { version } = await fetchLatestBaileysVersion();
-
-    const sock = makeWASocket({
-        version,
-        auth: state,
-        printQRInTerminal: !process.env.SESSION_ID,
-        // ... your other options
-    });
-
-    sock.ev.on('creds.update', saveCreds);
-    // ... rest of your bot logic
-}
-
-connectToWhatsApp();
-```
-
-### Example `.env` for Your Bot
+### Example environment
 
 ```env
-SESSION_ID=PRINCE-MDX!H4sIAAAAA...  # long session (full zlib string)
+SESSION_ID=HAYWHY_MDX2!<complete-generated-token>
 ```
 
 ---
